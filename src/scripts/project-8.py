@@ -102,7 +102,9 @@ subscribers_restaurant_df = spark.read \
                     
 # джойним данные из сообщения Kafka с пользователями подписки по restaurant_id (uuid). Добавляем время создания события.
 result_df = filtered_read_stream_df.join(subscribers_restaurant_df, 'restaurant_id', 'left')\
-    .withColumn("trigger_datetime_created", current_timestamp()) 
+    .withColumn("trigger_datetime_created", current_timestamp())\ 
+    .dropDuplicates(['restaurant_id', 'client_id']) \
+    .withWatermark('current_timestamp', '5 minute')
 
 #создаем таблицу subscribers_feedback
 connect_to_postgresql = psycopg2.connect(f"host='localhost' port='5432' dbname='de' user='jovyan' password='jovyan'")
