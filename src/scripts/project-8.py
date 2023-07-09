@@ -3,9 +3,10 @@ import os
 from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, to_json, col, lit, struct
+from pyspark.sql.functions import to_utc_timestamp, unix_timestamp, current_date, from_unixtime
 from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType
 from pyspark.sql import functions as f
-
+import psycopg2
 
  
 # необходимые библиотеки для интеграции Spark с Kafka и PostgreSQL
@@ -41,7 +42,7 @@ def foreach_batch_function(df, epoch_id):
     df.persist()
     # записываем df в PostgreSQL с полем feedback
     df.withColumn('feedback', f.lit(None).cast(StringType())).write.format('jdbc')\
-                    .mode('overwrite')\
+                    .mode('append')\
                     .option('url', 'jdbc:postgresql://localhost:5432/de') \
                     .option('driver', 'org.postgresql.Driver') \
                     .option('dbtable', 'public.subscribers_feedback') \
@@ -102,9 +103,9 @@ subscribers_restaurant_df = spark.read \
                     
 # джойним данные из сообщения Kafka с пользователями подписки по restaurant_id (uuid). Добавляем время создания события.
 result_df = filtered_read_stream_df.join(subscribers_restaurant_df, 'restaurant_id', 'left')\
-    .withColumn("trigger_datetime_created", current_timestamp())\ 
+    .withColumn("trigger_datetime_created", f.lit(datetime.utcnow()))\
     .dropDuplicates(['restaurant_id', 'client_id']) \
-    .withWatermark('current_timestamp', '5 minute')
+    .withWatermark('trigger_datetime_created', '5 minute')
 
 #создаем таблицу subscribers_feedback
 connect_to_postgresql = psycopg2.connect(f"host='localhost' port='5432' dbname='de' user='jovyan' password='jovyan'")
