@@ -4,7 +4,7 @@ from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, to_json, col, lit, struct
 from pyspark.sql.functions import to_utc_timestamp, unix_timestamp, current_date, from_unixtime
-from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType
+from pyspark.sql.types import StructType, StructField, StringType, LongType, TimestampType
 from pyspark.sql import functions as f
 import psycopg2
 
@@ -103,7 +103,7 @@ subscribers_restaurant_df = spark.read \
                     
 # джойним данные из сообщения Kafka с пользователями подписки по restaurant_id (uuid). Добавляем время создания события.
 result_df = filtered_read_stream_df.join(subscribers_restaurant_df, 'restaurant_id', 'left')\
-    .withColumn("trigger_datetime_created", f.lit(datetime.utcnow()))\
+    .withColumn("trigger_datetime_created", f.lit(datetime.utcnow()).cast(TimestampType()))\
     .dropDuplicates(['restaurant_id', 'client_id']) \
     .withWatermark('trigger_datetime_created', '5 minute')
 
