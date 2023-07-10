@@ -145,7 +145,7 @@ def join_data(filtered_read_stream_df, subscribers_restaurant_df):
         .withColumn("trigger_datetime_created", f.lit(datetime.utcnow()).cast(TimestampType()))\
         .dropDuplicates(['restaurant_id', 'client_id'])\
         .withWatermark('trigger_datetime_created', '5 minute') 
-    result_df.printSchema()
+
     return result_df
 
 # Модуль 6: Отправка сообщений в Postgres (с колонкой feedback) и в Kafka (без колонки feedback)
