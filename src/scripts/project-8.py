@@ -12,7 +12,8 @@ import psycopg2
 
 # Чтение параметров подключения из конфигурации
 config = configparser.ConfigParser()
-config.read('config.ini')
+config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.ini')
+config.read(config_path)
 
 kafka_bootstrap_servers = config.get('Kafka', 'bootstrap_servers')
 kafka_security_protocol = config.get('Kafka', 'security_protocol')
