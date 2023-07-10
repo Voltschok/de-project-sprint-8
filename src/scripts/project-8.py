@@ -77,8 +77,8 @@ def create_subscribers_feedback_table():
     ); 
     """) 
         connect_to_postgresql.commit() 
-        # cursor.close()
-        # connect_to_postgresql.close()
+        cursor.close()
+        connect_to_postgresql.close()
     except psycopg2.Error as e:
         # Обработка ошибки подключения к PostgreSQL
         print("Ошибка при подключении к PostgreSQL:", e) 
