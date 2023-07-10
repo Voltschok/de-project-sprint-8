@@ -15,10 +15,17 @@ config = configparser.ConfigParser()
 
 config.read('config.ini')
 
+# Параметры безопасности Kafka
 kafka_bootstrap_servers = config.get('Kafka', 'bootstrap_servers')
 kafka_security_protocol = config.get('Kafka', 'security_protocol')
 kafka_sasl_mechanism = config.get('Kafka', 'sasl_mechanism')
 kafka_sasl_jaas_config = config.get('Kafka', 'sasl_jaas_config')
+
+kafka_security_options = {
+    'kafka.security.protocol': kafka_security_protocol,
+    'kafka.sasl.mechanism': kafka_sasl_mechanism,
+    'kafka.sasl.jaas.config': kafka_sasl_jaas_config,
+}
 
 # Параметры подключения Postgres
 postgres_host=config.get('Postgres', 'host')
@@ -27,12 +34,6 @@ postgres_dbname=config.get('Postgres', 'dbname')
 postgres_user=config.get('Postgres', 'user')
 postgres_password=config.get('Postgres', 'password')
 
-# Параметры безопасности Kafka
-kafka_security_options = {
-    'kafka.security.protocol': kafka_security_protocol,
-    'kafka.sasl.mechanism': kafka_sasl_mechanism,
-    'kafka.sasl.jaas.config': kafka_sasl_jaas_config,
-}
 
 # необходимые библиотеки для интеграции Spark с Kafka и PostgreSQL
 spark_jars_packages = ",".join(
