@@ -10,9 +10,9 @@ import psycopg2
 
 
 
-# Чтение параметров подключения из конфигурации
+# Чтение параметров подключения для Kafka и Postgres из конфигурации
 config = configparser.ConfigParser()
-#config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.ini')
+
 config.read('config.ini')
 
 kafka_bootstrap_servers = config.get('Kafka', 'bootstrap_servers')
@@ -26,13 +26,6 @@ postgres_port=config.get('Postgres', 'port')
 postgres_dbname=config.get('Postgres', 'dbname')
 postgres_user=config.get('Postgres', 'user')
 postgres_password=config.get('Postgres', 'password')
-#print(postgres_host,postgres_port,postgres_dbname, postgres_user, postgres_password )
-# host='localhost'
-# port='5432'
-# dbname='de'
-# user='jovyan'
-# password='jovyan'"
-
 
 # Параметры безопасности Kafka
 kafka_security_options = {
@@ -40,7 +33,6 @@ kafka_security_options = {
     'kafka.sasl.mechanism': kafka_sasl_mechanism,
     'kafka.sasl.jaas.config': kafka_sasl_jaas_config,
 }
-print(kafka_security_options)
 
 # необходимые библиотеки для интеграции Spark с Kafka и PostgreSQL
 spark_jars_packages = ",".join(
@@ -49,11 +41,7 @@ spark_jars_packages = ",".join(
             "org.postgresql:postgresql:42.4.0",
         ]
     )
-# kafka_security_options = {
-#     'kafka.security.protocol': 'SASL_SSL',
-#     'kafka.sasl.mechanism': 'SCRAM-SHA-512',
-#     'kafka.sasl.jaas.config': 'org.apache.kafka.common.security.scram.ScramLoginModule required username=\"kafka-admin\" password=\"de-kafka-admin-2022\";',
-# }
+ 
 
 #колонки для выходного сообщения в kafka 
 columns=['restaurant_id','adv_campaign_id',
@@ -62,13 +50,40 @@ columns=['restaurant_id','adv_campaign_id',
   'datetime_created', 'trigger_datetime_created' ]
 
 
+# Модуль 0: Создание таблицы subscribers_feedback
+def create_subscribers_feedback_table():
+
+    try:
+        connect_to_postgresql = psycopg2.connect(f"host={postgres_host} port={postgres_port} dbname={postgres_dbname} user={postgres_user} password={postgres_password}")
+        cursor = connect_to_postgresql.cursor()
+  
+    # Здесь выполняется запись данных в PostgreSQL
+        cursor.execute(""" 
+        CREATE TABLE IF NOT EXISTS public.subscribers_feedback ( 
+        id serial4 NOT NULL, 
+        restaurant_id text NOT NULL, 
+        adv_campaign_id text NOT NULL, 
+        adv_campaign_content text NOT NULL, 
+        adv_campaign_owner text NOT NULL, 
+        adv_campaign_owner_contact text NOT NULL, 
+        adv_campaign_datetime_start int8 NOT NULL, 
+        adv_campaign_datetime_end int8 NOT NULL, 
+        datetime_created int8 NOT NULL, 
+        client_id text NOT NULL, 
+        trigger_datetime_created int4 NOT NULL, 
+        feedback varchar NULL, 
+        CONSTRAINT id_pk PRIMARY KEY (id) 
+    ); 
+    """) 
+        connect_to_postgresql.commit() 
+        # cursor.close()
+        # connect_to_postgresql.close()
+    except psycopg2.Error as e:
+        # Обработка ошибки подключения к PostgreSQL
+        print("Ошибка при подключении к PostgreSQL:", e) 
+
 # Модуль 1: Инициализация Spark сессии
 def initialize_spark_session():
-    spark_jars_packages = ",".join([
-        "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0",
-        "org.postgresql:postgresql:42.4.0",
-    ])
-
     spark = SparkSession.builder \
         .appName("RestaurantSubscribeStreamingService") \
         .config("spark.sql.session.timeZone", "UTC") \
@@ -76,46 +91,19 @@ def initialize_spark_session():
         .getOrCreate()
     return spark
 
-def foreach_batch_function(df, epoch_id):
-    # сохраняем df в памяти, чтобы не создавать df заново перед отправкой в Kafka
-    df.persist()
-    # записываем df в PostgreSQL с полем feedback
-    try:
-        df.withColumn('feedback', f.lit(None).cast(StringType())).write.format('jdbc')\
-                        .mode('append')\
-                        .option('url', f'jdbc:postgresql://{postgres_host}:{postgres_port}/{postgres_dbname}') \
-                        .option('driver', 'org.postgresql.Driver') \
-                        .option('dbtable', 'public.subscribers_feedback') \
-                        .option('user', postgres_user) \
-                        .option('password', postgres_password)\
-                        .save() 
-    except:
-        print('PSQL not ok')
-    # создаём df для отправки в Kafka. Сериализация в json.
-        # отправляем сообщения в результирующий топик Kafka без поля feedback
-    df.withColumn('value', f.to_json(
-        f.struct(columns))).select('value')\
-            .write\
-            .format("kafka")\
-            .option('kafka.bootstrap.servers', 'rc1b-2erh7b35n4j4v869.mdb.yandexcloud.net:9091') \
-            .options(**kafka_security_options)\
-            .option('topic', 'a_wolkov_out') \
-            .save()
-    # очищаем память от df
-    df.unpersist()
 
-# Модуль 4: Чтение данных из Kafka
+# Модуль 2: Чтение данных из Kafka
 def read_from_kafka(spark):
     restaurant_read_stream_df = spark.readStream \
         .format('kafka') \
-        .option('kafka.bootstrap.servers', 'rc1b-2erh7b35n4j4v869.mdb.yandexcloud.net:9091') \
+        .option('kafka.bootstrap.servers', kafka_bootstrap_servers) \
         .options(**kafka_security_options)\
         .option('subscribe', 'a_wolkov_in') \
         .load()
  
     return restaurant_read_stream_df
 
-# Модуль 5: Добавление схемы входных данных
+# Модуль 3: Добавление схемы входных данных
 def add_message_schema(df):
     incomming_message_schema = StructType([
         StructField('restaurant_id', StringType(), True),
@@ -136,7 +124,7 @@ def add_message_schema(df):
     
     return filtered_read_stream_df
 
-# Модуль 6: Чтение данных из PostgreSQL
+# Модуль 4: Чтение данных из PostgreSQL
 def read_from_postgresql(spark):
     subscribers_restaurant_df = spark.read \
         .format('jdbc') \
@@ -149,58 +137,58 @@ def read_from_postgresql(spark):
  
     return subscribers_restaurant_df
 
-# джойним данные из сообщения Kafka с пользователями подписки по restaurant_id (uuid). Добавляем время создания события.
+#Модуль 5: джойним данные из сообщения Kafka с пользователями подписки по restaurant_id (uuid). Добавляем время создания события.
 def join_data(filtered_read_stream_df, subscribers_restaurant_df):
     
     result_df = filtered_read_stream_df.join(subscribers_restaurant_df, 'restaurant_id', 'left')\
         .withColumn("trigger_datetime_created", f.lit(datetime.utcnow()).cast(TimestampType()))\
         .dropDuplicates(['restaurant_id', 'client_id'])\
         .withWatermark('trigger_datetime_created', '5 minute') 
+    result_df.printSchema()
     return result_df
-# Модуль 7: Создание таблицы subscribers_feedback
-def create_subscribers_feedback_table():
 
-    try:
-        connect_to_postgresql = psycopg2.connect(f"host={postgres_host} port={postgres_port} dbname={postgres_dbname} user={postgres_user} password={postgres_password}")
-        cursor = connect_to_postgresql.cursor()
- 
-         
-    # Здесь выполняется запись данных в PostgreSQL
-        cursor.execute(""" 
-        CREATE TABLE IF NOT EXISTS public.subscribers_feedback ( 
-        id serial4 NOT NULL, 
-        restaurant_id text NOT NULL, 
-        adv_campaign_id text NOT NULL, 
-        adv_campaign_content text NOT NULL, 
-        adv_campaign_owner text NOT NULL, 
-        adv_campaign_owner_contact text NOT NULL, 
-        adv_campaign_datetime_start int8 NOT NULL, 
-        adv_campaign_datetime_end int8 NOT NULL, 
-        datetime_created int8 NOT NULL, 
-        client_id text NOT NULL, 
-        trigger_datetime_created int4 NOT NULL, 
-        feedback varchar NULL, 
-        CONSTRAINT id_pk PRIMARY KEY (id) 
-    ); 
-    """) 
-        connect_to_postgresql.commit() 
-        cursor.close()
-        connect_to_postgresql.close()
-    except psycopg2.Error as e:
-        # Обработка ошибки подключения к PostgreSQL
-        print("Ошибка при подключении к PostgreSQL:", e) 
+# Модуль 6: Отправка сообщений в Postgres (с колонкой feedback) и в Kafka (без колонки feedback)
+def foreach_batch_function(df, epoch_id):
 
-# Модуль 8: Запуск стриминга
-def start_streaming():
+    # сохраняем df в памяти, чтобы не создавать df заново перед отправкой в Kafka
+    df.persist()
+
+    # записываем df в PostgreSQL с полем feedback 
+    df.withColumn('feedback', f.lit(None).cast(StringType())).write.format('jdbc')\
+                    .mode('append')\
+                    .option('url', 'jdbc:postgresql://localhost:5432/de') \
+                    .option('driver', 'org.postgresql.Driver') \
+                    .option('dbtable', 'public.subscribers_feedback') \
+                    .option('user', 'jovyan') \
+                    .option('password', 'jovyan')\
+                    .save()  
+  
+    # создаём df для отправки в Kafka. Сериализация в json.
+        # отправляем сообщения в результирующий топик Kafka без поля feedback
+    df.withColumn('value', f.to_json(f.struct(columns))).select('value')\
+            .write\
+            .format("kafka")\
+            .option('kafka.bootstrap.servers', kafka_bootstrap_servers) \
+            .options(**kafka_security_options)\
+            .option('topic', 'a_wolkov_out') \
+            .save() 
+    # очищаем память от df 
+    df.unpersist()
+
+# Модуль 7: Запуск стриминга
+def main():
     spark=initialize_spark_session()
     incoming_message=read_from_kafka(spark)
     filtered_read_stream_df=add_message_schema(incoming_message)
     subscribers_restaurant_df=read_from_postgresql(spark)
-    
+        
     result_df=join_data(filtered_read_stream_df, subscribers_restaurant_df)
     result_df.writeStream \
-        .foreachBatch(foreach_batch_function) \
-        .start() \
-        .awaitTermination() 
-create_subscribers_feedback_table()
-start_streaming()
+            .foreachBatch(foreach_batch_function) \
+            .start() \
+            .awaitTermination() 
+
+
+if __name__ == "__main__":
+        create_subscribers_feedback_table()
+        main()
