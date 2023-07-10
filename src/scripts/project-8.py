@@ -22,9 +22,9 @@ kafka_sasl_jaas_config = config.get('Kafka', 'sasl_jaas_config')
 
 postgres_host=config.get('Postgres', 'host')
 postgres_port=config.get('Postgres', 'port')
-postgres_dbname=config.get('Postgres', 'de')
-postgres_user=config.get('Postgres', 'jovyan')
-postgres_password=config.get('Postgres', 'jovyan')
+postgres_dbname=config.get('Postgres', 'dbname')
+postgres_user=config.get('Postgres', 'user')
+postgres_password=config.get('Postgres', 'password')
 
 # host='localhost'
 # port='5432'
