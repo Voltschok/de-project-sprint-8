@@ -20,7 +20,7 @@ kafka_security_protocol = config.get('Kafka', 'security_protocol')
 kafka_sasl_mechanism = config.get('Kafka', 'sasl_mechanism')
 kafka_sasl_jaas_config = config.get('Kafka', 'sasl_jaas_config')
 
-
+# Параметры подключения Postgres
 postgres_host=config.get('Postgres', 'host')
 postgres_port=config.get('Postgres', 'port')
 postgres_dbname=config.get('Postgres', 'dbname')
